@@ -1,0 +1,197 @@
+<?php
+  include '../koneksi.php';
+
+  function pr($par) {
+    echo "<pre>";
+      print_r($par);
+    echo"</pre>";
+    exit();
+  }
+
+  function vd($par) {
+    echo "<pre>";
+      var_dump($par);
+    echo"</pre>";
+    exit();
+  }
+
+  function getDataByParam($table,$par,$val){
+    global $con;
+    // pr($con);
+    $whr = $val!=''?' WHERE '.$par.'="'.$val.'"':'';
+    $s='SELECT * FROM '.$table.$whr.' ORDER BY '.$par.' ASC';
+    // pr($s);
+    $e=mysqli_query($con,$s);
+    $r=mysqli_fetch_assoc($e);
+    return [
+      'status'=>$e?'success':'failed to load data',
+      'data'  =>$r
+    ];
+  }
+
+  function getListByParam($table,$par,$val){
+    global $conn;
+    $whr = $val!=''?' WHERE '.$par.'="'.$val.'"':'';
+    $s='SELECT * FROM '.$table.$whr.' ORDER BY '.$par.' ASC';
+    // pr($conn);
+    $e=mysqli_query($con,$s);
+    $n=mysqli_num_rows($e);
+    $data=[];
+
+    while ($r=mysqli_fetch_assoc($e)){
+      $data[]=$r;
+    }
+    $out= [
+      'status'=>$e?'success':'failed to load data',
+      'num'  =>$n,
+      'data'  =>$data
+    ];
+    return $out;
+  }
+
+  function getDistinctList($table,$par,$val){
+    global $con;
+    $whr = $val!=''?' WHERE '.$par.'="'.$val.'"':'';
+    $s='SELECT DISTINCT('.$par.') FROM '.$table.$whr.' ORDER BY '.$par.' ASC';
+    $e=mysqli_query($con,$s);
+    $n=mysqli_num_rows($e);
+    $data=[];
+
+    while ($r=mysqli_fetch_assoc($e)){
+      $data[]=$r;
+    }
+    $out= [
+      'status'=>$e?'success':'failed to load data',
+      'num'  =>$n,
+      'data'  =>$data
+    ];
+    pr($out);
+    return $out;
+  }
+
+  function getStokBarang($jenisBarang,$merk,$ukuran,$toko){
+      global $con;
+      $s='SELECT jumlah
+          FROM barang
+          WHERE
+            jenisBarang="'.$jenisBarang.'"
+            AND merk="'.$merk.'"
+            AND ukuran="'.$ukuran.'"
+            AND toko="'.$toko.'"
+            ';
+      $e=mysqli_query($con,$s);
+      // vd($e);
+      $r=mysqli_fetch_assoc($e);
+      return [
+        'status'=>$e?'success':'failed to load data',
+        'data'  =>$r['jumlah']
+      ];
+  }
+
+  function getNotifPeminjaman($tipe,$toko,$durasi){
+    global $con;
+    $s = 'SELECT
+              idPinjam,
+              kode,
+              status,
+              toko1,
+              toko2,
+              ukuran,
+              merk,
+              ukuran,
+              jumlah,
+              status,
+              jenisBarang,
+              date(tglPinjam)tgl_pinjam,
+              curdate() tgl_skrg,
+              abs(datediff(date(tglPinjam),date(curdate()))) selisih_hari
+          FROM pinjam
+          WHERE
+              '.($tipe=='meminjam'?'toko2 = "'.$toko.'"':'toko1= "'.$toko.'"').'
+              AND status="'.($tipe=='meminjam'?'approved':'pending').'"
+              AND abs(datediff(date(tglPinjam),date(curdate())))<='.$durasi.'
+          ORDER BY
+              tgl_pinjam DESC
+              ';
+    // pr($tipe);
+    // pr($s);
+    $e=mysqli_query($con,$s);
+    $alerts='';
+
+    while ($r=mysqli_fetch_assoc($e)) {
+      // data-title="konfirmasi"
+      // pr($stok);
+      if($tipe=='meminjam'){
+        $color = 'success';
+        $detailInfo = 'Toko <strong>'.$r['toko1'].'</strong> telah menyediakan barang dengan';
+        $button = '<a href="#" class="btn btn-xs btn-success pull-rightx float-right"
+            data-toggle="modal"
+            data-target="#confirmModal"
+            onclick="ambilBarang('.$r['idPinjam'].')"
+            merk="'.$r['merk'].'"
+            ukuran="'.$r['ukuran'].'"
+            jumlah="'.$r['jumlah'].'"
+            data-message="Anda yakin sudah mengambil
+              (
+                '.$r['jumlah'].'
+                '.$r['jenisBarang'].',
+                merk '.$r['merk'].',
+                ukuran '.$r['ukuran'].'
+              ) ke toko '.$r['toko1'].'
+            ?"
+            >
+              ambil
+            </a>';
+      }
+      else { // dipinjam
+        $stok =  getStokBarang($r['jenisBarang'],$r['merk'],$r['ukuran'],$toko);
+        // pr($stok);
+        $color = 'warning';
+        $detailInfo = 'Toko <strong>'.$r['toko2'].'</strong> ingin meminjam';
+        $button = '<a href="#" class="btn btn-xs btn-warning pull-rightx float-right"
+            id="sediakan_'.$r['idPinjam'].'"
+            data-toggle="modal"
+            data-target="#formModal"
+            onclick="formSediakanBarang('.$r['idPinjam'].')"
+            jenisBarang="'.$r['jenisBarang'].'"
+            merk="'.$r['merk'].'"
+            ukuran="'.$r['ukuran'].'"
+            jumlah="'.$r['jumlah'].'"
+            toko="'.$r['toko2'].'"
+            stok="'.$stok['data'].'"
+            >
+              sediakan
+            </a>
+            <a  href="#"
+                onclick="tolakPeminjaman('.$r['idPinjam'].');return false;"
+                class="btn btn-secondary btn-xs float-right"
+
+                data-toggle="modal"
+                data-target="#confirmModal"
+                onclick="tolak('.$r['idPinjam'].')"
+                data-message="Anda yakin menolak permintaan
+                  (
+                    '.$r['jumlah'].'
+                    '.$r['jenisBarang'].',
+                    merk '.$r['merk'].',
+                    ukuran '.$r['ukuran'].'
+                  ) dr toko '.$r['toko2'].'
+                ?"
+            >
+              Tolak
+            </a>
+            ';
+      }
+
+      $alerts.='<div id="idAlert_'.$r['idPinjam'].'" class="alert alert-'.$color.'" role="alert">
+          '.$button.'
+          '.$detailInfo.'
+          jenis <b>'.$r['jenisBarang'].'</b>,
+          merk <b>'.$r['merk'].'</b>,
+          ukuran <b> '.$r['ukuran'].'</b>,
+          sebanyak <b> '.$r['jumlah'].'</b>,
+        </div>';
+    } echo $alerts;
+  }
+
+?>
